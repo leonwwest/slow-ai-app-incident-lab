@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Local runtime artifacts (DB, logs, pid) - never commit
+data/*.db
+data/*.db-journal
+data/*.log
+data/*.err
+data/*.pid
+data/server.*
+
+# k6 / load test results
+results.json
+*.out
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Env files (keep .env.example tracked)
+.env
+.env.*
+!.env.example

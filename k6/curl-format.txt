@@ -1,0 +1,13 @@
+# curl timing breakdown format for the network/DNS checklist (Runbook step 7).
+# Usage:
+#   curl -w "@k6/curl-format.txt" -o /dev/null -s https://api.example.com/health
+#
+# Note: on Windows use a single-line -w string instead, e.g.
+#   curl -w "dns:%{time_namelookup} connect:%{time_connect} tls:%{time_appconnect} ttfb:%{time_starttransfer} total:%{time_total}\n" -o NUL -s https://api.example.com/health
+
+    dns_lookup:    %{time_namelookup}s
+    tcp_connect:   %{time_connect}s
+    tls_handshake: %{time_appconnect}s
+    ttfb:          %{time_starttransfer}s
+    total:         %{time_total}s
+    http_code:     %{http_code}\n
