@@ -1,0 +1,35 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: slow-ai-app-logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        filters:
+          - name: name
+            values: ["slow-ai-app-incident-lab-app-1", "slow-ai-app-incident-lab_app_1"]
+    pipeline_stages:
+      # Parse the JSON log lines emitted by app/logging_setup.py
+      - json:
+          expressions:
+            level: level
+            endpoint: endpoint
+            status_code: status_code
+            latency_ms: latency_ms
+            request_id: request_id
+            user_id: user_id
+            error_message: error_message
+            deployment_version: deployment_version
+      # Attach parsed fields as Loki labels for filtering in Grafana
+      - labels:
+          level:
+          endpoint:
+          status_code:
+          deployment_version:

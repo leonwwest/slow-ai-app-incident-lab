@@ -51,6 +51,7 @@ async def root() -> dict:
             "POST /chat/slow",
             "GET /random-error",
             "GET /db-query",
+            "GET /api/stats",
             "GET /metrics",
         ],
         "docs": "/docs",

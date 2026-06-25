@@ -1,5 +1,10 @@
 # Slow AI App Incident Lab
 
+[![CI](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](https://www.docker.com/)
+
 A deliberately slow AI/web app for practising **production-style debugging**:
 P95/P99 latency analysis, error-rate investigation, structured logging,
 trace-based reasoning, IAM/API-key checks, network/DNS debugging, cloud cost
@@ -73,15 +78,18 @@ All requests flow through `RequestLoggingMiddleware`, which assigns a
 |-------------|---------------------------------|----------------------------------------|
 | Backend     | FastAPI                         | async, OpenAPI docs at `/docs`         |
 | Database    | SQLite (default) / PostgreSQL   | switch via `DB_BACKEND=postgres`       |
-| Logs        | JSON to stdout                  | pipe into Loki / jq / any log shipper  |
+| Logs        | JSON to stdout → Loki         | pipe into Loki / jq / any log shipper  |
 | Metrics     | Prometheus (`/metrics`)         | custom AI counters + request histograms|
 | Dashboard   | Grafana (auto-provisioned)      | `docker compose up` loads dashboard    |
 | Tracing     | OpenTelemetry -> Jaeger (OTLP)  | spans for provider + db calls          |
+| Alerting    | Alertmanager                   | P95, error-rate, cost-spike rules      |
 | Load test   | k6                              | mixed-traffic scenarios                |
-| Analysis    | `scripts/analyze.py`            | P50/P95/P99, error rate, cost          |
+| Analysis    | `scripts/analyze.py` + `/api/stats` | P50/P95/P99, error rate, cost     |
+| Rate limit  | Token-bucket per user           | auto-enabled in v1.3.2 (fix mode)      |
+| Caching     | In-memory TTL cache             | auto-enabled in v1.3.2 (fix mode)      |
 | Observability SQL | `sql/observability_queries.sql` | Postgres dialect, 3 queries     |
 | CI          | GitHub Actions                  | lint + smoke test on every push        |
-| Container   | Docker Compose                  | app + postgres + prometheus + grafana + jaeger |
+| Container   | Docker Compose                  | app + postgres + prometheus + grafana + jaeger + loki + alertmanager |
 
 ---
 
@@ -125,18 +133,22 @@ The API is now available at `http://localhost:8010` (interactive docs at
 docker compose up --build
 ```
 
-This starts five services:
+This starts seven services:
 
 | Service     | Port | Purpose                          |
 |-------------|------|----------------------------------|
 | app         | 8010 | FastAPI (Postgres backend)       |
 | postgres    | 5432 | request_logs on real Postgres    |
 | prometheus  | 9090 | metrics scrape + alerting rules  |
+| alertmanager| 9093 | alert routing (UI for alerts)    |
 | grafana     | 3000 | auto-provisioned dashboard       |
 | jaeger      | 16686| distributed traces (OTLP)        |
+| loki        | 3100 | log aggregation (JSON log lines) |
 
 Grafana: `http://localhost:3000` (admin / admin). The incident dashboard is
-auto-loaded. Jaeger UI: `http://localhost:16686`.
+auto-loaded with Prometheus (metrics) and Loki (logs) datasources.
+Jaeger UI: `http://localhost:16686`.
+Alertmanager: `http://localhost:9093`.
 
 ### 4. Smoke test
 
@@ -221,6 +233,23 @@ Simulates a slow database query: a recursive CTE scan plus a random 300-1500
 ms delay. Records `db_latency_ms` on the request so it shows up in logs and
 the database.
 
+### `GET /api/stats`
+
+Returns a live observability summary as JSON — P50/P95/P99 per endpoint,
+error rate, total cost, token count, cache stats, and whether rate limiting
+is active. Useful for external dashboards or quick `curl` checks:
+
+```bash
+curl http://localhost:8010/api/stats | python -m json.tool
+```
+
+### `GET /metrics`
+
+Prometheus-format metrics endpoint scraped by Prometheus. Exposes
+`http_requests_total`, `http_request_duration_seconds`, `ai_tokens_total`,
+`ai_cost_usd_total`, `ai_provider_latency_ms`, `ai_provider_errors_total`,
+`db_query_latency_ms`, and `ai_provider_calls_active`.
+
 ---
 
 ## Simulated Failure Modes
@@ -238,7 +267,15 @@ the database.
 
 The current deployment version is `v1.4.0` by default. Set
 `DEPLOYMENT_VERSION=v1.3.2` in `.env` to simulate the "known-good" version
-before a rollback.
+before a rollback. In v1.3.2 the following fixes are auto-enabled:
+
+| Fix           | What changes                                    |
+|---------------|-------------------------------------------------|
+| Rate limiting | Token-bucket per user (10 burst, 20/min) on /chat and /chat/slow |
+| Caching       | In-memory TTL cache (5 min) for repeated prompts — cached responses return in ~0ms with no token cost |
+| 429 responses | Users exceeding the bucket get 429 + Retry-After header |
+
+Override with `ENABLE_RATE_LIMIT=true/false` and `ENABLE_CACHE=true/false`.
 
 ---
 
@@ -319,10 +356,10 @@ Recommended actions:
 
 Optional upgrades that make this lab even stronger for a CV:
 
-- Alertmanager service in docker-compose (alerts defined in `prometheus/alerts.yml`)
-- Deploy to Render / Railway / Fly.io / Cloudflare Workers
+- Slack/Teams webhook in alertmanager for real alert notifications
+- Deploy to Fly.io (`fly deploy`) — `fly.toml` already configured
 - Feature flags + canary deployment simulation
-- Blue-green deployment and rollback via GitHub Action
+- Blue-green deployment via GitHub Action
 
 ---
 
@@ -336,15 +373,18 @@ slow-ai-app-incident-lab/
 │   ├── config.py            # settings (env-driven, .env support)
 │   ├── database.py          # SQLite + Postgres backend abstraction
 │   ├── logging_setup.py     # JSON logging
-│   ├── middleware.py        # request logging + latency + request_id
+│   ├── middleware.py        # request logging + latency + request_id + metrics
 │   ├── metrics.py           # Prometheus metrics (custom AI counters/histograms)
 │   ├── tracing.py           # OpenTelemetry setup (OTLP -> Jaeger)
+│   ├── rate_limit.py        # Per-user token-bucket rate limiter (v1.3.2 fix)
+│   ├── cache.py             # In-memory TTL prompt cache (v1.3.2 fix)
 │   ├── ai_provider.py       # simulated provider (delay, 401, 503, cost, spans, metrics)
 │   └── routers/
 │       ├── __init__.py      # api_router aggregation
 │       ├── health.py        # GET /health
-│       ├── chat.py          # POST /chat, POST /chat/slow
-│       └── diagnostics.py   # GET /random-error, GET /db-query
+│       ├── chat.py          # POST /chat, POST /chat/slow (rate-limited + cached)
+│       ├── diagnostics.py   # GET /random-error, GET /db-query
+│       └── stats.py         # GET /api/stats (live observability JSON)
 ├── scripts/
 │   └── analyze.py           # local observability report (P50/P95/P99, errors, cost)
 ├── sql/
@@ -354,10 +394,16 @@ slow-ai-app-incident-lab/
 │   ├── load-test.js         # mixed-traffic load test
 │   └── curl-format.txt      # curl timing breakdown for DNS/network checks
 ├── prometheus/
-│   ├── prometheus.yml       # scrape config
+│   ├── prometheus.yml       # scrape config + alertmanager routing
 │   └── alerts.yml           # alerting rules (P95, error rate, cost spike)
+├── alertmanager/
+│   └── alertmanager.yml     # alert routing config
+├── loki/
+│   └── loki-config.yml      # Loki log aggregation config
+├── promtail/
+│   └── promtail-config.yml  # Promtail log shipper (Docker SD + JSON parsing)
 ├── grafana/
-│   ├── provisioning/        # datasource + dashboard provider (auto-load)
+│   ├── provisioning/        # datasource (Prometheus + Loki) + dashboard provider
 │   └── dashboards/
 │       └── incident-dashboard.json  # 8-panel dashboard (latency, errors, cost, traces)
 ├── docs/
@@ -370,7 +416,10 @@ slow-ai-app-incident-lab/
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile               # app container image
-├── docker-compose.yml       # app + postgres + prometheus + grafana + jaeger
+├── docker-compose.yml       # 7 services: app+pg+prom+am+grafana+jaeger+loki+promtail
+├── Makefile                 # make run / make load / make analyze / make run-docker
+├── fly.toml                 # Fly.io deployment config
+├── LICENSE                  # MIT
 ├── requirements.txt
 ├── run.py                   # `python run.py` launcher
 └── README.md
@@ -383,8 +432,10 @@ slow-ai-app-incident-lab/
 > Built a mini observability lab for diagnosing slow AI/web applications,
 > including P95/P99 latency analysis, error-rate investigation, structured
 > logging, tracing concepts, IAM/API-key checks, network/DNS debugging, cost
-> analysis, scaling review, rollback strategy and SQL-based observability
-> queries.
+> analysis, scaling review, rollback strategy, SQL-based observability
+> queries, Prometheus metrics, Grafana dashboards, OpenTelemetry tracing,
+> Loki log aggregation, alerting rules, per-user rate limiting, prompt
+> caching and Docker Compose orchestration.
 
 Deutsch:
 

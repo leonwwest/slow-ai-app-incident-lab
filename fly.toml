@@ -1,0 +1,28 @@
+# Fly.io deployment config for the Slow AI App Incident Lab.
+# Deploy with:  fly deploy --env AI_API_KEY=your-key
+# First run:    fly launch --no-deploy (to create the app), then fly deploy
+
+app = "slow-ai-app-incident-lab"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8010
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[env]
+  DB_BACKEND = "sqlite"
+  ENABLE_METRICS = "true"
+  ENABLE_TRACING = "false"
+  DEPLOYMENT_VERSION = "v1.4.0"
+  REGION = "fra"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
