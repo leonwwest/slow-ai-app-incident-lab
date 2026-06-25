@@ -19,6 +19,7 @@ from starlette.responses import Response
 from app.config import settings
 from app.database import insert_request_log
 from app.logging_setup import setup_logging  # noqa: F401  (ensures logging ready)
+from app.metrics import record_request
 
 import logging
 
@@ -100,3 +101,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 insert_request_log(record)
             except Exception as exc:  # noqa: BLE001 - never break a response over logging
                 log.warning("request_log.persist_failed", extra={"error": str(exc)})
+
+            # Prometheus metrics.
+            try:
+                record_request(
+                    method=method,
+                    handler=endpoint,
+                    status=status_code,
+                    duration_s=latency_ms / 1000.0,
+                )
+            except Exception:
+                pass

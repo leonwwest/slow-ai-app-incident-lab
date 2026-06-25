@@ -22,6 +22,9 @@ data/server.*
 results.json
 *.out
 
+# Local k6 binary (downloaded, not installed system-wide)
+bin/
+
 # Editor / OS
 .vscode/
 .idea/

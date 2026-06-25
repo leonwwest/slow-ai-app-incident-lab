@@ -5,6 +5,12 @@ import time
 from fastapi import HTTPException, Request
 
 from app.config import settings
+from app.metrics import (
+    AI_PROVIDER_CALLS_ACTIVE,
+    record_ai_call,
+    record_ai_error,
+)
+from app.tracing import get_tracer
 
 
 def estimate_cost(input_tokens: int, output_tokens: int) -> float:
@@ -26,40 +32,65 @@ def simulate_provider_call(
 
     Returns a dict with tokens_used and provider_latency_ms attached to the
     request state. May raise HTTPException for 401 (auth) or 503 (timeout)
-    to mirror real provider failure modes.
+    to mirror real provider failure modes. Records Prometheus metrics and an
+    OTel span for the provider call.
     """
+    tracer = get_tracer()
+    endpoint = request.url.path
+    user_id = getattr(request.state, "user_id", "unknown")
+
     # 1. IAM / API-key check - a fraction of calls fail when the key is unset.
     if not settings.ai_api_key and random.random() < auth_failure_probability:
         request.state.error_message = "AI provider 401: missing or invalid api key (AI_API_KEY)"
+        record_ai_error(endpoint, 401)
         raise HTTPException(
             status_code=401,
             detail="AI provider unauthorized: check AI_API_KEY / secret manager",
         )
 
-    # 2. Latency simulation.
+    AI_PROVIDER_CALLS_ACTIVE.inc()
     start = time.perf_counter()
-    time.sleep(delay_ms / 1000.0)
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    try:
+        if tracer:
+            with tracer.start_as_current_span(
+                "ai_provider_request",
+                attributes={
+                    "endpoint": endpoint,
+                    "user_id": user_id,
+                    "delay_ms": delay_ms,
+                },
+            ) as span:
+                time.sleep(delay_ms / 1000.0)
+        else:
+            time.sleep(delay_ms / 1000.0)
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
 
-    # 3. Provider timeout / 503 - more likely on the slow path.
-    if random.random() < timeout_probability:
+        # Provider timeout / 503 - more likely on the slow path.
+        if random.random() < timeout_probability:
+            request.state.provider_latency_ms = elapsed_ms
+            request.state.error_message = "AI provider 503: upstream timeout"
+            record_ai_error(endpoint, 503)
+            if tracer:
+                span.set_attribute("error", True)
+                span.set_attribute("error.type", "provider_timeout")
+            raise HTTPException(status_code=503, detail="AI provider timeout")
+
+        # Success - simulate token usage and cost.
+        input_tokens = random.randint(120, 600)
+        output_tokens = random.randint(80, 400)
+        tokens_used = input_tokens + output_tokens
+        cost = estimate_cost(input_tokens, output_tokens)
+
         request.state.provider_latency_ms = elapsed_ms
-        request.state.error_message = "AI provider 503: upstream timeout"
-        raise HTTPException(status_code=503, detail="AI provider timeout")
-
-    # 4. Success - simulate token usage and cost.
-    input_tokens = random.randint(120, 600)
-    output_tokens = random.randint(80, 400)
-    tokens_used = input_tokens + output_tokens
-    cost = estimate_cost(input_tokens, output_tokens)
-
-    request.state.provider_latency_ms = elapsed_ms
-    request.state.tokens_used = tokens_used
-    request.state.estimated_cost_usd = cost
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "tokens_used": tokens_used,
-        "estimated_cost_usd": cost,
-        "provider_latency_ms": elapsed_ms,
-    }
+        request.state.tokens_used = tokens_used
+        request.state.estimated_cost_usd = cost
+        record_ai_call(endpoint, user_id, tokens_used, cost, elapsed_ms)
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "tokens_used": tokens_used,
+            "estimated_cost_usd": cost,
+            "provider_latency_ms": elapsed_ms,
+        }
+    finally:
+        AI_PROVIDER_CALLS_ACTIVE.dec()

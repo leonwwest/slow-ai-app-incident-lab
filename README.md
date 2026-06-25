@@ -72,14 +72,16 @@ All requests flow through `RequestLoggingMiddleware`, which assigns a
 | Layer       | Choice                          | Notes                                  |
 |-------------|---------------------------------|----------------------------------------|
 | Backend     | FastAPI                         | async, OpenAPI docs at `/docs`         |
-| Database    | SQLite                          | zero-setup; schema mirrors Postgres    |
+| Database    | SQLite (default) / PostgreSQL   | switch via `DB_BACKEND=postgres`       |
 | Logs        | JSON to stdout                  | pipe into Loki / jq / any log shipper  |
+| Metrics     | Prometheus (`/metrics`)         | custom AI counters + request histograms|
+| Dashboard   | Grafana (auto-provisioned)      | `docker compose up` loads dashboard    |
+| Tracing     | OpenTelemetry -> Jaeger (OTLP)  | spans for provider + db calls          |
 | Load test   | k6                              | mixed-traffic scenarios                |
 | Analysis    | `scripts/analyze.py`            | P50/P95/P99, error rate, cost          |
 | Observability SQL | `sql/observability_queries.sql` | Postgres dialect, 3 queries     |
-
-Planned upgrades (see [Next Improvements](#next-improvements)): Docker
-Compose, Prometheus, Grafana, OpenTelemetry.
+| CI          | GitHub Actions                  | lint + smoke test on every push        |
+| Container   | Docker Compose                  | app + postgres + prometheus + grafana + jaeger |
 
 ---
 
@@ -103,7 +105,8 @@ cp .env.example .env
 ```
 
 Leave `AI_API_KEY` empty to reproduce the example incident's 401 failures, or
-set it to any value to "fix" IAM.
+set it to any value to "fix" IAM. Set `DB_BACKEND=postgres` to use the
+Postgres backend (default is zero-setup SQLite).
 
 ### 3. Start the server
 
@@ -113,7 +116,27 @@ python run.py
 ```
 
 The API is now available at `http://localhost:8010` (interactive docs at
-`/docs`). The SQLite database `data/incident_lab.db` is created on first run.
+`/docs`, Prometheus metrics at `/metrics`). The SQLite database
+`data/incident_lab.db` is created on first run.
+
+### 3b. Or: run the full stack with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+This starts five services:
+
+| Service     | Port | Purpose                          |
+|-------------|------|----------------------------------|
+| app         | 8010 | FastAPI (Postgres backend)       |
+| postgres    | 5432 | request_logs on real Postgres    |
+| prometheus  | 9090 | metrics scrape + alerting rules  |
+| grafana     | 3000 | auto-provisioned dashboard       |
+| jaeger      | 16686| distributed traces (OTLP)        |
+
+Grafana: `http://localhost:3000` (admin / admin). The incident dashboard is
+auto-loaded. Jaeger UI: `http://localhost:16686`.
 
 ### 4. Smoke test
 
@@ -296,13 +319,8 @@ Recommended actions:
 
 Optional upgrades that make this lab even stronger for a CV:
 
-- Docker Compose (FastAPI + Postgres + Prometheus + Grafana + Loki)
-- Prometheus `/metrics` endpoint
-- Grafana dashboard JSON
-- OpenTelemetry traces (OTLP export to Jaeger/Tempo)
-- GitHub Actions CI (lint + run k6 smoke test)
+- Alertmanager service in docker-compose (alerts defined in `prometheus/alerts.yml`)
 - Deploy to Render / Railway / Fly.io / Cloudflare Workers
-- Postmortem template
 - Feature flags + canary deployment simulation
 - Blue-green deployment and rollback via GitHub Action
 
@@ -314,12 +332,14 @@ Optional upgrades that make this lab even stronger for a CV:
 slow-ai-app-incident-lab/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI app + lifespan + middleware wiring
-│   ├── config.py            # settings (env-driven)
-│   ├── database.py          # SQLite schema + request_logs insert
+│   ├── main.py              # FastAPI app + lifespan + middleware + metrics/tracing wiring
+│   ├── config.py            # settings (env-driven, .env support)
+│   ├── database.py          # SQLite + Postgres backend abstraction
 │   ├── logging_setup.py     # JSON logging
 │   ├── middleware.py        # request logging + latency + request_id
-│   ├── ai_provider.py       # simulated provider (delay, 401, 503, cost)
+│   ├── metrics.py           # Prometheus metrics (custom AI counters/histograms)
+│   ├── tracing.py           # OpenTelemetry setup (OTLP -> Jaeger)
+│   ├── ai_provider.py       # simulated provider (delay, 401, 503, cost, spans, metrics)
 │   └── routers/
 │       ├── __init__.py      # api_router aggregation
 │       ├── health.py        # GET /health
@@ -333,12 +353,24 @@ slow-ai-app-incident-lab/
 ├── k6/
 │   ├── load-test.js         # mixed-traffic load test
 │   └── curl-format.txt      # curl timing breakdown for DNS/network checks
+├── prometheus/
+│   ├── prometheus.yml       # scrape config
+│   └── alerts.yml           # alerting rules (P95, error rate, cost spike)
+├── grafana/
+│   ├── provisioning/        # datasource + dashboard provider (auto-load)
+│   └── dashboards/
+│       └── incident-dashboard.json  # 8-panel dashboard (latency, errors, cost, traces)
 ├── docs/
 │   ├── RUNBOOK.md           # 10-step incident analysis runbook
-│   └── INCIDENT_EXAMPLE.md  # worked example: timeline + findings
+│   ├── INCIDENT_EXAMPLE.md  # worked example: timeline + findings
+│   └── POSTMORTEM_TEMPLATE.md  # blank postmortem template
+├── .github/workflows/
+│   └── ci.yml               # GitHub Actions: lint + smoke test
 ├── data/                    # SQLite db + logs (gitignored)
 ├── .env.example
 ├── .gitignore
+├── Dockerfile               # app container image
+├── docker-compose.yml       # app + postgres + prometheus + grafana + jaeger
 ├── requirements.txt
 ├── run.py                   # `python run.py` launcher
 └── README.md

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Python syntax check
+        run: |
+          python -m compileall app scripts
+          python -c "import ast, pathlib; [ast.parse(p.read_text()) for p in pathlib.Path('app').rglob('*.py')]"
+
+      - name: Start app
+        run: |
+          python run.py &
+          sleep 4
+
+      - name: Health check
+        run: |
+          curl -fsS http://localhost:8010/health | grep -q '"status":"ok"'
+
+      - name: Smoke test endpoints
+        run: |
+          curl -fsS -X POST http://localhost:8010/chat \
+            -H "Content-Type: application/json" \
+            -d '{"prompt":"ci smoke test"}' | grep -q "request_id"
+          curl -fsS http://localhost:8010/db-query | grep -q "db_latency_ms"
+          curl -fsS http://localhost:8010/metrics | grep -q "http_requests"
+
+      - name: Analyze script
+        run: python scripts/analyze.py --hours 1

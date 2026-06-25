@@ -1,0 +1,69 @@
+# Alerting rules for the Slow AI App Incident Lab.
+# Evaluate in Prometheus, forward via Alertmanager (not included in the
+# minimal compose stack - add alertmanager service when ready).
+
+groups:
+  - name: slow-ai-app-latency
+    rules:
+      - alert: HighP95LatencySlowChat
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{handler="/chat/slow"}[5m])
+          ) > 2
+        for: 1m
+        labels:
+          severity: critical
+          endpoint: "/chat/slow"
+        annotations:
+          summary: "P95 latency on /chat/slow above 2s"
+          description: "P95 = {{ $value }}s. Expected < 2s. Likely AI provider delay."
+
+      - alert: HighP95LatencyDbQuery
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{handler="/db-query"}[5m])
+          ) > 2
+        for: 1m
+        labels:
+          severity: warning
+          endpoint: "/db-query"
+        annotations:
+          summary: "P95 latency on /db-query above 2s"
+          description: "P95 = {{ $value }}s. Check for slow queries / missing indexes."
+
+  - name: slow-ai-app-errors
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m]))
+          > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Overall 5xx error rate above 5%"
+          description: "Error rate = {{ $value | humanizePercentage }}. Treat as incident."
+
+      - alert: AIProviderErrors
+        expr: |
+          increase(ai_provider_errors_total[5m]) > 10
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI provider errors spiking"
+          description: "{{ $value }} provider errors in 5m. Check IAM/API-key and provider status."
+
+  - name: slow-ai-app-cost
+    rules:
+      - alert: AICostSpike
+        expr: |
+          increase(ai_cost_usd_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI cost spike detected"
+          description: "${{ $value }} spent in the last hour. Check for retry loops or abuse."
