@@ -14,4 +14,4 @@ opentelemetry-exporter-otlp>=1.27
 opentelemetry-instrumentation-fastapi>=0.48b0
 
 # Postgres backend (optional). SQLite users do not need this.
-psycopg2-binary>=2.9
+psycopg2-binary>=2.9.12
