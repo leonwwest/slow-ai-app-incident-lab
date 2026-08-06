@@ -17,6 +17,7 @@ data/*.log
 data/*.err
 data/*.pid
 data/server.*
+reports/
 
 # k6 / load test results
 results.json

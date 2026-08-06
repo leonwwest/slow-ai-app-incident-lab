@@ -1,4 +1,4 @@
-.PHONY: help install run run-docker stop-docker test load analyze clean lint
+.PHONY: help install run run-docker stop-docker test unit load analyze triage-demo clean lint
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -22,6 +22,10 @@ test: ## Run a quick smoke test against a running app
 		-H "Content-Type: application/json" \
 		-d '{"prompt":"smoke test"}' | python -m json.tool
 	curl -fsS http://localhost:8010/api/stats | python -m json.tool
+	curl -fsS http://localhost:8010/api/triage | python -m json.tool
+
+unit: ## Run deterministic incident-classification tests
+	python -m pytest -q
 
 load: ## Run the k6 load test (requires k6 installed)
 	k6 run k6/load-test.js
@@ -31,6 +35,9 @@ analyze: ## Run the observability analysis report
 
 analyze-24h: ## Run the observability report for the last 24h
 	python scripts/analyze.py --hours 24
+
+triage-demo: ## Classify the captured degraded-service example
+	python scripts/triage.py examples/degraded-stats.json
 
 lint: ## Syntax-check all Python files
 	python -m compileall app scripts
