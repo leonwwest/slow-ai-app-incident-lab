@@ -10,7 +10,7 @@ prometheus-client>=0.20
 # OpenTelemetry (tracing -> OTLP / Jaeger). Optional: app runs without these,
 # tracing is simply disabled. Installed in the Docker image.
 opentelemetry-distro>=0.48
-opentelemetry-exporter-otlp>=1.27
+opentelemetry-exporter-otlp>=1.44.0
 opentelemetry-instrumentation-fastapi>=0.48b0
 
 # Postgres backend (optional). SQLite users do not need this.
