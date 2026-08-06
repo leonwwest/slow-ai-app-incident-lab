@@ -5,6 +5,8 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](https://www.docker.com/)
 
+![Incident Automation Lab overview](assets/social-preview.svg)
+
 A deliberately slow AI/web app for practising **production-style debugging**:
 P95/P99 latency analysis, error-rate investigation, structured logging,
 trace-based reasoning, IAM/API-key checks, network/DNS debugging, cloud cost
@@ -17,6 +19,27 @@ unstable — the kind of work Cloud Engineers, DevOps and SREs do every day.
 The lab also includes an **explainable incident-automation layer**. It converts live
 statistics into severity, confidence, ranked hypotheses and a safe action checklist without
 silently restarting, scaling or rolling back anything.
+
+## Recruiter quick view
+
+| Question | Evidence in this repository |
+|---|---|
+| What is investigated? | API, database and simulated AI-provider latency, errors and cost |
+| Which signals are correlated? | Prometheus metrics, structured Loki logs and OpenTelemetry traces |
+| What does automation decide? | SEV1–SEV4, confidence, ranked hypotheses and the next evidence to collect |
+| What can it change? | Nothing by itself: restart, scale, rollback and credential rotation require approval |
+| How is it verified? | Deterministic unit tests plus a full GitHub Actions HTTP smoke test |
+
+```bash
+docker compose up --build
+curl -s http://localhost:8010/api/triage | python -m json.tool
+```
+
+Start with the [triage runbook](docs/TRIAGE_RUNBOOK.md), [automation policy](docs/AUTOMATION_POLICY.md)
+and [worked incident](docs/INCIDENT_EXAMPLE.md).
+
+<details>
+<summary><strong>Deep technical reference and complete lab guide</strong></summary>
 
 ---
 
@@ -439,6 +462,8 @@ slow-ai-app-incident-lab/
 ```
 
 ---
+
+</details>
 
 ## CV Bullet
 
