@@ -1,6 +1,7 @@
 # Slow AI App Incident Lab
 
 [![CI](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml)
+[![Security](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/security.yml/badge.svg)](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](https://www.docker.com/)
@@ -28,7 +29,13 @@ silently restarting, scaling or rolling back anything.
 | Which signals are correlated? | Prometheus metrics, structured Loki logs and OpenTelemetry traces |
 | What does automation decide? | SEV1–SEV4, confidence, ranked hypotheses and the next evidence to collect |
 | What can it change? | Nothing by itself: restart, scale, rollback and credential rotation require approval |
-| How is it verified? | Deterministic unit tests plus a full GitHub Actions HTTP smoke test |
+| How is it verified? | Unit tests, five HTTP smoke checks, CodeQL, dependency audit, Trivy and SPDX SBOM |
+
+### Real incident exercise
+
+The recording below was produced from a real local request to the deliberately slow endpoint, followed by live triage and the actual test suite. The triage remains in `dry-run`; state-changing actions are listed as approval-required and the executed-action list stays empty.
+
+![Observed slow request and dry-run triage](docs/demo.gif)
 
 ```bash
 docker compose up --build
