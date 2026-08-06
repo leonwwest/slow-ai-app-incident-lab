@@ -2,7 +2,7 @@ fastapi==0.141.1
 starlette==1.4.1
 uvicorn[standard]==0.34.0
 pydantic>=2.11
-python-dotenv>=1.0
+python-dotenv>=1.2.2
 
 # Observability stack
 prometheus-client>=0.20
