@@ -1,0 +1,11 @@
+{
+  "window": "1h",
+  "rows": 240,
+  "error_rate_pct": 8.75,
+  "total_cost_usd": 2.48,
+  "endpoints": {
+    "/chat": {"p95_ms": 580, "error_rate_pct": 0.8},
+    "/chat/slow": {"p95_ms": 4380, "error_rate_pct": 17.5},
+    "/db-query": {"p95_ms": 1310, "error_rate_pct": 0.0}
+  }
+}

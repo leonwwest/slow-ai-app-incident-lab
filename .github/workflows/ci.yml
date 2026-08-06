@@ -18,12 +18,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Python syntax check
         run: |
           python -m compileall app scripts
           python -c "import ast, pathlib; [ast.parse(p.read_text()) for p in pathlib.Path('app').rglob('*.py')]"
+
+      - name: Unit tests
+        run: python -m pytest -q
 
       - name: Start app
         run: |
@@ -41,6 +44,7 @@ jobs:
             -d '{"prompt":"ci smoke test"}' | grep -q "request_id"
           curl -fsS http://localhost:8010/db-query | grep -q "db_latency_ms"
           curl -fsS http://localhost:8010/metrics | grep -q "http_requests"
+          curl -fsS http://localhost:8010/api/triage | grep -q '"automation"'
 
       - name: Analyze script
         run: python scripts/analyze.py --hours 1

@@ -14,9 +14,12 @@ groups:
         labels:
           severity: critical
           endpoint: "/chat/slow"
+          service: "slow-ai-app"
+          owner: "platform-operations"
         annotations:
           summary: "P95 latency on /chat/slow above 2s"
           description: "P95 = {{ $value }}s. Expected < 2s. Likely AI provider delay."
+          runbook_url: "docs/TRIAGE_RUNBOOK.md"
 
       - alert: HighP95LatencyDbQuery
         expr: |
@@ -27,9 +30,12 @@ groups:
         labels:
           severity: warning
           endpoint: "/db-query"
+          service: "slow-ai-app"
+          owner: "platform-operations"
         annotations:
           summary: "P95 latency on /db-query above 2s"
           description: "P95 = {{ $value }}s. Check for slow queries / missing indexes."
+          runbook_url: "docs/TRIAGE_RUNBOOK.md"
 
   - name: slow-ai-app-errors
     rules:
@@ -42,9 +48,12 @@ groups:
         for: 1m
         labels:
           severity: critical
+          service: "slow-ai-app"
+          owner: "platform-operations"
         annotations:
           summary: "Overall 5xx error rate above 5%"
           description: "Error rate = {{ $value | humanizePercentage }}. Treat as incident."
+          runbook_url: "docs/TRIAGE_RUNBOOK.md"
 
       - alert: AIProviderErrors
         expr: |
@@ -52,9 +61,12 @@ groups:
         for: 30s
         labels:
           severity: warning
+          service: "slow-ai-app"
+          owner: "platform-operations"
         annotations:
           summary: "AI provider errors spiking"
           description: "{{ $value }} provider errors in 5m. Check IAM/API-key and provider status."
+          runbook_url: "docs/TRIAGE_RUNBOOK.md"
 
   - name: slow-ai-app-cost
     rules:
@@ -64,6 +76,9 @@ groups:
         for: 5m
         labels:
           severity: warning
+          service: "slow-ai-app"
+          owner: "platform-operations"
         annotations:
           summary: "AI cost spike detected"
           description: "${{ $value }} spent in the last hour. Check for retry loops or abuse."
+          runbook_url: "docs/TRIAGE_RUNBOOK.md"

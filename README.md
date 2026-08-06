@@ -14,6 +14,10 @@ The goal is **not** to build another AI chatbot. The goal is to show you can
 systematically analyse *why* a cloud/AI application is slow, expensive or
 unstable — the kind of work Cloud Engineers, DevOps and SREs do every day.
 
+The lab also includes an **explainable incident-automation layer**. It converts live
+statistics into severity, confidence, ranked hypotheses and a safe action checklist without
+silently restarting, scaling or rolling back anything.
+
 ---
 
 ## Project Overview
@@ -85,6 +89,7 @@ All requests flow through `RequestLoggingMiddleware`, which assigns a
 | Alerting    | Alertmanager                   | P95, error-rate, cost-spike rules      |
 | Load test   | k6                              | mixed-traffic scenarios                |
 | Analysis    | `scripts/analyze.py` + `/api/stats` | P50/P95/P99, error rate, cost     |
+| Triage automation | `/api/triage` + `scripts/triage.py` | deterministic severity and hypotheses |
 | Rate limit  | Token-bucket per user           | auto-enabled in v1.3.2 (fix mode)      |
 | Caching     | In-memory TTL cache             | auto-enabled in v1.3.2 (fix mode)      |
 | Observability SQL | `sql/observability_queries.sql` | Postgres dialect, 3 queries     |
@@ -241,6 +246,7 @@ is active. Useful for external dashboards or quick `curl` checks:
 
 ```bash
 curl http://localhost:8010/api/stats | python -m json.tool
+curl http://localhost:8010/api/triage | python -m json.tool
 ```
 
 ### `GET /metrics`
@@ -249,6 +255,13 @@ Prometheus-format metrics endpoint scraped by Prometheus. Exposes
 `http_requests_total`, `http_request_duration_seconds`, `ai_tokens_total`,
 `ai_cost_usd_total`, `ai_provider_latency_ms`, `ai_provider_errors_total`,
 `db_query_latency_ms`, and `ai_provider_calls_active`.
+
+### `GET /api/triage`
+
+Evaluates the current one-hour window and returns an explainable incident decision. The report
+contains observed signals, confidence, ranked hypotheses, an evidence checklist and actions
+that require approval. See the [automation policy](docs/AUTOMATION_POLICY.md) and the
+[triage runbook](docs/TRIAGE_RUNBOOK.md).
 
 ---
 

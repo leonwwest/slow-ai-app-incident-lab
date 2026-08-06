@@ -52,6 +52,7 @@ async def root() -> dict:
             "GET /random-error",
             "GET /db-query",
             "GET /api/stats",
+            "GET /api/triage",
             "GET /metrics",
         ],
         "docs": "/docs",
