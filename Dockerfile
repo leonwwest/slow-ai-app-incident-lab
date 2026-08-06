@@ -8,8 +8,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Create the data dir so SQLite has a place to write even without a volume.
-RUN mkdir -p data
+# Create the writable data directory, then drop root permanently.
+RUN groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
+    && mkdir -p data \
+    && chown -R app:app /app
+
+USER 10001:10001
 
 EXPOSE 8010
 
