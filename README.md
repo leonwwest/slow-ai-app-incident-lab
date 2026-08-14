@@ -149,7 +149,9 @@ cp .env.example .env
 
 Leave `AI_API_KEY` empty to reproduce the example incident's 401 failures, or
 set it to any value to "fix" IAM. Set `DB_BACKEND=postgres` to use the
-Postgres backend (default is zero-setup SQLite).
+Postgres backend (default is zero-setup SQLite). Provider failures stay enabled
+by default; set `ENABLE_PROVIDER_FAILURES=false` only for a deterministic
+success-path check such as CI.
 
 ### 3. Start the server
 

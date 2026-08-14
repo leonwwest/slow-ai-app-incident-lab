@@ -46,6 +46,9 @@ class Settings:
     # /slow-chat calls surface realistic 401 IAM failures. Set to any
     # non-empty value to "fix" IAM.
     ai_api_key: str = os.getenv("AI_API_KEY", "")
+    # Keep the incident simulation enabled by default. CI disables provider
+    # failures so its success-path smoke check cannot randomly receive a 503.
+    enable_provider_failures: bool = _bool("ENABLE_PROVIDER_FAILURES", "true")
 
     # --- Observability toggles -------------------------------------------
     # Prometheus /metrics endpoint.

@@ -40,7 +40,11 @@ def simulate_provider_call(
     user_id = getattr(request.state, "user_id", "unknown")
 
     # 1. IAM / API-key check - a fraction of calls fail when the key is unset.
-    if not settings.ai_api_key and random.random() < auth_failure_probability:
+    if (
+        settings.enable_provider_failures
+        and not settings.ai_api_key
+        and random.random() < auth_failure_probability
+    ):
         request.state.error_message = "AI provider 401: missing or invalid api key (AI_API_KEY)"
         record_ai_error(endpoint, 401)
         raise HTTPException(
@@ -66,7 +70,7 @@ def simulate_provider_call(
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
         # Provider timeout / 503 - more likely on the slow path.
-        if random.random() < timeout_probability:
+        if settings.enable_provider_failures and random.random() < timeout_probability:
             request.state.provider_latency_ms = elapsed_ms
             request.state.error_message = "AI provider 503: upstream timeout"
             record_ai_error(endpoint, 503)
