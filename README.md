@@ -1,493 +1,179 @@
-# Slow AI App Incident Lab
+# Incident Automation Lab
 
 [![CI](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/ci.yml)
 [![Security](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/security.yml/badge.svg)](https://github.com/leonwwest/slow-ai-app-incident-lab/actions/workflows/security.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
+[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](docker-compose.yml)
 
 ![Incident Automation Lab overview](assets/social-preview.svg)
 
-A deliberately slow AI/web app for practising **production-style debugging**:
-P95/P99 latency analysis, error-rate investigation, structured logging,
-trace-based reasoning, IAM/API-key checks, network/DNS debugging, cloud cost
-analysis, scaling review and rollback strategy.
+A reproducible incident-response lab that correlates metrics, structured logs
+and OpenTelemetry traces, then turns the evidence into an explainable, safe
+triage decision. It is built around a deliberately degraded FastAPI service,
+not a production outage or a live AI provider.
 
-The goal is **not** to build another AI chatbot. The goal is to show you can
-systematically analyse *why* a cloud/AI application is slow, expensive or
-unstable — the kind of work Cloud Engineers, DevOps and SREs do every day.
+## 60-second view
 
-The lab also includes an **explainable incident-automation layer**. It converts live
-statistics into severity, confidence, ranked hypotheses and a safe action checklist without
-silently restarting, scaling or rolling back anything.
-
-## Recruiter quick view
-
-| Question | Evidence in this repository |
+| | Evidence |
 |---|---|
-| What is investigated? | API, database and simulated AI-provider latency, errors and cost |
-| Which signals are correlated? | Prometheus metrics, structured Loki logs and OpenTelemetry traces |
-| What does automation decide? | SEV1–SEV4, confidence, ranked hypotheses and the next evidence to collect |
-| What can it change? | Nothing by itself: restart, scale, rollback and credential rotation require approval |
-| How is it verified? | Unit tests, five HTTP smoke checks, CodeQL, dependency audit, Trivy and SPDX SBOM |
+| **Incident** | Simulated latency, provider failures, API-key errors, slow database calls and cost signals |
+| **Telemetry** | Prometheus metrics, JSON logs in Loki and OTLP traces in Jaeger |
+| **Decision support** | Deterministic SEV1-SEV4 classification, confidence and ranked hypotheses |
+| **Operator safety** | Restart, scale, rollback and credential rotation are approval-only; no state-changing action is executed |
+| **Operational proof** | Reproducible fixture, live HTTP demo, triage policy, worked incident, runbooks and postmortem template |
+| **Delivery proof** | Unit tests, endpoint smoke tests, CodeQL, dependency audit, Trivy and an SPDX SBOM in GitHub Actions |
 
-### Real incident exercise
+The checked-in degraded fixture produces a **SEV2 / high-confidence** decision:
+240 requests, 8.75% errors and a 4,380 ms worst P95 on `/chat/slow`. The first
+hypothesis points to the simulated AI-provider path; `executed_actions` remains
+empty.
 
-The recording below was produced from a real local request to the deliberately slow endpoint, followed by live triage and the actual test suite. The triage remains in `dry-run`; state-changing actions are listed as approval-required and the executed-action list stays empty.
+```bash
+python -m scripts.triage examples/degraded-stats.json
+```
+
+That result is deterministic and covered by
+[`tests/test_incident_triage.py`](tests/test_incident_triage.py). The thresholds
+are published in the [automation policy](docs/AUTOMATION_POLICY.md).
+
+## Evidence map
+
+| Capability | Where to inspect it |
+|---|---|
+| Metrics and alerting | [`app/metrics.py`](app/metrics.py), [`prometheus/alerts.yml`](prometheus/alerts.yml), [`grafana/dashboards/incident-dashboard.json`](grafana/dashboards/incident-dashboard.json) |
+| Structured request logs | [`app/middleware.py`](app/middleware.py), [`app/logging_setup.py`](app/logging_setup.py), [`loki/loki-config.yml`](loki/loki-config.yml) |
+| Distributed traces | [`app/tracing.py`](app/tracing.py), provider and database-exercise spans in [`app/ai_provider.py`](app/ai_provider.py) and [`app/routers/diagnostics.py`](app/routers/diagnostics.py) |
+| Explainable triage | [`app/incident_triage.py`](app/incident_triage.py), [`app/routers/triage.py`](app/routers/triage.py), [`scripts/triage.py`](scripts/triage.py) |
+| Incident procedure | [triage runbook](docs/TRIAGE_RUNBOOK.md), [full runbook](docs/RUNBOOK.md), [worked incident](docs/INCIDENT_EXAMPLE.md), [postmortem template](docs/POSTMORTEM_TEMPLATE.md) |
+| Latency, error and cost analysis | [`scripts/analyze.py`](scripts/analyze.py), [`sql/observability_queries.sql`](sql/observability_queries.sql) |
+| Verification and supply chain | [CI workflow](.github/workflows/ci.yml), [security workflow](.github/workflows/security.yml), [`requirements-dev.txt`](requirements-dev.txt) |
+
+## Recorded exercise
+
+This recording shows a request to the deliberately slow endpoint, live triage
+and the test suite. Triage stays in `dry-run`: it recommends evidence and
+operator decisions but never restarts, scales or rolls back a service.
 
 ![Observed slow request and dry-run triage](docs/demo.gif)
 
+## How the lab works
+
+```text
+client / k6
+    |
+    v
+FastAPI service ----> SQLite or PostgreSQL request history
+    |                         |
+    |                         +--> percentile, error and cost analysis
+    |
+    +--> Prometheus metrics --> alerts + Grafana
+    +--> structured logs ----> Loki + Grafana
+    +--> OTLP spans ----------> Jaeger
+    |
+    +--> /api/stats ----------> deterministic triage --> operator decision
+```
+
+The full Docker Compose stack contains the app, PostgreSQL, Prometheus,
+Alertmanager, Grafana, Loki, Promtail and Jaeger. The application also runs
+locally with zero-setup SQLite.
+
+### Signals captured per request
+
+- request ID, endpoint, status code and total latency;
+- provider and database latency;
+- token use and estimated cost;
+- deployment version and error message;
+- Prometheus request, provider, database and cost metrics;
+- OpenTelemetry request spans plus provider and database-exercise spans.
+
+The triage engine uses the one-hour summary from `/api/stats`. It reports the
+observed signals, sample-size-based confidence, severity and the next evidence
+needed to validate each hypothesis. Sparse data is classified as
+`insufficient-data` instead of triggering remediation.
+
+## Run it
+
+### Fast path: local SQLite
+
+Requires Python 3.11+.
+
 ```bash
-docker compose up --build
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python run.py
+```
+
+In another terminal:
+
+```bash
+curl -s http://localhost:8010/health
+curl -s http://localhost:8010/api/stats | python -m json.tool
 curl -s http://localhost:8010/api/triage | python -m json.tool
 ```
 
-Start with the [triage runbook](docs/TRIAGE_RUNBOOK.md), [automation policy](docs/AUTOMATION_POLICY.md)
-and [worked incident](docs/INCIDENT_EXAMPLE.md).
-
-<details>
-<summary><strong>Deep technical reference and complete lab guide</strong></summary>
-
----
-
-## Project Overview
-
-This lab simulates an AI web app that suddenly became slow. Users report:
-
-> "The app takes forever to load."
-> "Sometimes I get an error."
-> "AI answers take much longer than yesterday."
-> "Costs suddenly went up."
-
-Your job is to find out:
-
-1. Is the frontend slow or the API?
-2. Is the database slow?
-3. Is the external AI provider slow?
-4. Are there errors from API-key / IAM issues?
-5. Are there network or DNS problems?
-6. Is the app not scaling?
-7. Should we roll back?
-
-The project ships with a running demo app, artificial slowness, simulated
-failures, structured JSON logs, a request log database, three observability
-SQL queries, a load test and a step-by-step incident runbook.
-
----
-
-## Architecture
-
-```text
-User / Browser
-      |
-      v
-Frontend or API client (k6, curl, browser)
-      |
-      v
-Backend API (FastAPI, port 8010)
-  - GET  /health         liveness probe
-  - POST /chat           normal AI request
-  - POST /chat/slow      slow AI request (2-8s, high P95/P99)
-  - GET  /random-error   random 500/429/401/503
-  - GET  /db-query       slow database query
-      |
-      +--> SQLite (request_logs)
-      |
-      +--> Simulated AI provider (in-process delay + failures)
-      |
-      +--> Structured JSON logs (stdout)  +  request_logs table
-```
-
-All requests flow through `RequestLoggingMiddleware`, which assigns a
-`request_id`, measures latency, collects per-call extras
-(`provider_latency_ms`, `db_latency_ms`, `tokens_used`,
-`estimated_cost_usd`, `error_message`) and persists one row to
-`request_logs` while emitting one JSON log line.
-
----
-
-## Tech Stack
-
-| Layer       | Choice                          | Notes                                  |
-|-------------|---------------------------------|----------------------------------------|
-| Backend     | FastAPI                         | async, OpenAPI docs at `/docs`         |
-| Database    | SQLite (default) / PostgreSQL   | switch via `DB_BACKEND=postgres`       |
-| Logs        | JSON to stdout → Loki         | pipe into Loki / jq / any log shipper  |
-| Metrics     | Prometheus (`/metrics`)         | custom AI counters + request histograms|
-| Dashboard   | Grafana (auto-provisioned)      | `docker compose up` loads dashboard    |
-| Tracing     | OpenTelemetry -> Jaeger (OTLP)  | spans for provider + db calls          |
-| Alerting    | Alertmanager                   | P95, error-rate, cost-spike rules      |
-| Load test   | k6                              | mixed-traffic scenarios                |
-| Analysis    | `scripts/analyze.py` + `/api/stats` | P50/P95/P99, error rate, cost     |
-| Triage automation | `/api/triage` + `scripts/triage.py` | deterministic severity and hypotheses |
-| Rate limit  | Token-bucket per user           | auto-enabled in v1.3.2 (fix mode)      |
-| Caching     | In-memory TTL cache             | auto-enabled in v1.3.2 (fix mode)      |
-| Observability SQL | `sql/observability_queries.sql` | Postgres dialect, 3 queries     |
-| CI          | GitHub Actions                  | lint + smoke test on every push        |
-| Container   | Docker Compose                  | app + postgres + prometheus + grafana + jaeger + loki + alertmanager |
-
----
-
-## How to Run
-
-### Prerequisites
-
-- Python 3.11+ (tested on 3.14)
-- [k6](https://k6.io/docs/get-started/installation/) (only for load tests)
-
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. (Optional) Configure environment
-
-```bash
-cp .env.example .env
-```
-
-Leave `AI_API_KEY` empty to reproduce the example incident's 401 failures, or
-set it to any value to "fix" IAM. Set `DB_BACKEND=postgres` to use the
-Postgres backend (default is zero-setup SQLite). Provider failures stay enabled
-by default; set `ENABLE_PROVIDER_FAILURES=false` only for a deterministic
-success-path check such as CI.
-
-### 3. Start the server
-
-```bash
-python run.py
-# or: uvicorn app.main:app --port 8010
-```
-
-The API is now available at `http://localhost:8010` (interactive docs at
-`/docs`, Prometheus metrics at `/metrics`). The SQLite database
-`data/incident_lab.db` is created on first run.
-
-### 3b. Or: run the full stack with Docker Compose
+### Full observability stack
 
 ```bash
 docker compose up --build
 ```
 
-This starts seven services:
+| Service | URL |
+|---|---|
+| API and OpenAPI | `http://localhost:8010` / `http://localhost:8010/docs` |
+| Grafana | `http://localhost:3000` (`admin` / `admin`) |
+| Prometheus | `http://localhost:9090` |
+| Alertmanager | `http://localhost:9093` |
+| Jaeger | `http://localhost:16686` |
 
-| Service     | Port | Purpose                          |
-|-------------|------|----------------------------------|
-| app         | 8010 | FastAPI (Postgres backend)       |
-| postgres    | 5432 | request_logs on real Postgres    |
-| prometheus  | 9090 | metrics scrape + alerting rules  |
-| alertmanager| 9093 | alert routing (UI for alerts)    |
-| grafana     | 3000 | auto-provisioned dashboard       |
-| jaeger      | 16686| distributed traces (OTLP)        |
-| loki        | 3100 | log aggregation (JSON log lines) |
-
-Grafana: `http://localhost:3000` (admin / admin). The incident dashboard is
-auto-loaded with Prometheus (metrics) and Loki (logs) datasources.
-Jaeger UI: `http://localhost:16686`.
-Alertmanager: `http://localhost:9093`.
-
-### 4. Smoke test
-
-```bash
-curl http://localhost:8010/health
-curl -X POST http://localhost:8010/chat \
-  -H "Content-Type: application/json" \
-  -d '{"prompt":"Explain P95 latency in one sentence."}'
-curl http://localhost:8010/db-query
-curl http://localhost:8010/random-error   # expect a 4xx/5xx
-```
-
-### 5. Run a load test
+Generate mixed traffic with the k6 scenarios, then analyse the stored request
+history:
 
 ```bash
 k6 run k6/load-test.js
+python scripts/analyze.py --hours 1
 ```
 
-This runs four scenarios in parallel (`chat`, `slow-chat`, `random-error`,
-`db-query`) for ~60s and produces the data the runbook is designed to analyse.
-
-### 6. Analyse the results
+## Verification
 
 ```bash
-python scripts/analyze.py            # last 1 hour
-python scripts/analyze.py --hours 24 # last 24 hours
+python -m pytest -q
+python -m compileall app scripts
+docker compose config --quiet
 ```
 
-This prints a plain-text report with the three observability queries
-re-implemented for SQLite (P50/P95/P99 per endpoint, error rate, AI cost per
-user, cost/latency by deployment version).
+The pull-request workflows additionally start the service and smoke-test
+`/health`, `/chat`, `/db-query`, `/metrics` and `/api/triage`. Security checks
+run CodeQL, `pip-audit`, Trivy filesystem scanning and SPDX SBOM generation.
 
-The canonical PostgreSQL versions of the same queries live in
-`sql/observability_queries.sql` and work as-is in Datadog, New Relic,
-BigQuery, ClickHouse or a Postgres-backed log store.
+## Simulation and safety boundary
 
----
+This repository is an engineering exercise. Provider delay, failures, tokens
+and cost are generated by the local simulation; the example incident and its
+numbers are not measurements from a production system. Loki, Jaeger and
+Prometheus receive real telemetry from the running lab, while external cloud
+services and remediation actions remain simulated.
 
-## Endpoints
+The automation is deliberately decision support only:
 
-### `GET /health`
+- automatic: classify, rank hypotheses, collect evidence and draft an update;
+- approval required: restart, scale, rollback and rotate credentials;
+- never automatic: destructive or state-changing remediation.
 
-Liveness probe. Returns:
+See [`docs/AUTOMATION_POLICY.md`](docs/AUTOMATION_POLICY.md) for the exact
+severity contract and [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the operator
+decision tree.
 
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-06-25T10:00:00.000000+00:00",
-  "deployment_version": "v1.4.0",
-  "region": "eu-central-1"
-}
-```
+## Deeper documentation
 
-If `/health` is slow, the app itself is down — check every other explanation
-first.
+- [Automated triage runbook](docs/TRIAGE_RUNBOOK.md)
+- [Full ten-step incident runbook](docs/RUNBOOK.md)
+- [Worked simulated incident](docs/INCIDENT_EXAMPLE.md)
+- [Automation policy and safety model](docs/AUTOMATION_POLICY.md)
+- [Postmortem template](docs/POSTMORTEM_TEMPLATE.md)
+- [PostgreSQL observability queries](sql/observability_queries.sql)
 
-### `POST /chat`
+## License
 
-Normal AI request. Body:
-
-```json
-{ "prompt": "Explain P95 latency in one sentence.", "user_id": "user_42" }
-```
-
-Simulates: ~250-600 ms provider latency, low failure rate, token usage and
-cost estimation. `user_id` is optional (a random id is generated if omitted).
-
-### `POST /chat/slow`
-
-Slow AI request. Same body as `/chat`. Simulates: **2-8 seconds** of provider
-latency, high P95/P99, ~18 % provider timeout (503), ~1 % auth failure (401).
-This is the primary suspect in the example incident.
-
-### `GET /random-error`
-
-Returns one of `500`, `429`, `401`, `503` at random with a matching error
-message. Use it to exercise error-rate analysis and status-code triage.
-
-### `GET /db-query`
-
-Simulates a slow database query: a recursive CTE scan plus a random 300-1500
-ms delay. Records `db_latency_ms` on the request so it shows up in logs and
-the database.
-
-### `GET /api/stats`
-
-Returns a live observability summary as JSON — P50/P95/P99 per endpoint,
-error rate, total cost, token count, cache stats, and whether rate limiting
-is active. Useful for external dashboards or quick `curl` checks:
-
-```bash
-curl http://localhost:8010/api/stats | python -m json.tool
-curl http://localhost:8010/api/triage | python -m json.tool
-```
-
-### `GET /metrics`
-
-Prometheus-format metrics endpoint scraped by Prometheus. Exposes
-`http_requests_total`, `http_request_duration_seconds`, `ai_tokens_total`,
-`ai_cost_usd_total`, `ai_provider_latency_ms`, `ai_provider_errors_total`,
-`db_query_latency_ms`, and `ai_provider_calls_active`.
-
-### `GET /api/triage`
-
-Evaluates the current one-hour window and returns an explainable incident decision. The report
-contains observed signals, confidence, ranked hypotheses, an evidence checklist and actions
-that require approval. See the [automation policy](docs/AUTOMATION_POLICY.md) and the
-[triage runbook](docs/TRIAGE_RUNBOOK.md).
-
----
-
-## Simulated Failure Modes
-
-| Failure              | Where              | How it manifests                          |
-|----------------------|--------------------|-------------------------------------------|
-| High P95/P99 latency | `/chat/slow`       | 2-8 s response time                       |
-| Provider timeout     | `/chat/slow`       | 503, `provider_latency_ms` in logs        |
-| IAM / API-key error  | `/chat`, `/chat/slow` | 401 when `AI_API_KEY` is empty          |
-| Rate limit           | `/random-error`    | 429                                       |
-| Internal error       | `/random-error`    | 500                                       |
-| Provider unavailable | `/random-error`    | 503                                       |
-| Slow DB query        | `/db-query`        | elevated `db_latency_ms`                  |
-| Cost spike           | `/chat/slow`       | higher tokens + cost per request          |
-
-The current deployment version is `v1.4.0` by default. Set
-`DEPLOYMENT_VERSION=v1.3.2` in `.env` to simulate the "known-good" version
-before a rollback. In v1.3.2 the following fixes are auto-enabled:
-
-| Fix           | What changes                                    |
-|---------------|-------------------------------------------------|
-| Rate limiting | Token-bucket per user (10 burst, 20/min) on /chat and /chat/slow |
-| Caching       | In-memory TTL cache (5 min) for repeated prompts — cached responses return in ~0ms with no token cost |
-| 429 responses | Users exceeding the bucket get 429 + Retry-After header |
-
-Override with `ENABLE_RATE_LIMIT=true/false` and `ENABLE_CACHE=true/false`.
-
----
-
-## Observability Queries
-
-Three canonical queries live in [`sql/observability_queries.sql`](sql/observability_queries.sql):
-
-1. **P50 / P95 / P99 latency per endpoint** — find which endpoints are slow.
-2. **Error rate by status code and endpoint** — find where errors originate
-   and classify them (4xx = client/IAM, 5xx = server/upstream/provider).
-3. **AI cost and token usage per user / endpoint** — detect abuse, retry
-   loops or oversized prompts driving cost. Includes a per-deployment-version
-   cost/latency/error summary for rollback correlation.
-
-They are written in PostgreSQL dialect (`PERCENTILE_CONT`, window functions)
-and run as-is against Postgres-backed log stores, BigQuery, ClickHouse,
-Datadog and New Relic. For the local SQLite database, run
-`python scripts/analyze.py` which re-implements the same logic in Python.
-
----
-
-## Incident Runbook
-
-The full step-by-step runbook is in [`docs/RUNBOOK.md`](docs/RUNBOOK.md) and
-covers all ten analysis steps:
-
-1. Incident einordnen
-2. P95/P99-Latenz prüfen
-3. Error Rate prüfen
-4. Logs prüfen
-5. Traces prüfen
-6. IAM/API-Key prüfen
-7. Netzwerk und DNS prüfen
-8. Cloud-Kosten prüfen
-9. Skalierung prüfen
-10. Rollback prüfen
-
-A worked example incident (timeline, findings, recommended actions) is in
-[`docs/INCIDENT_EXAMPLE.md`](docs/INCIDENT_EXAMPLE.md).
-
----
-
-## Example Findings
-
-After a 60s `k6` run against the default configuration you should observe
-findings close to:
-
-```text
-Finding 1:
-P95 latency for /chat/slow reached ~6.5 seconds.
-Root cause: simulated AI provider delay (2-8s) plus ~18% timeout rate.
-
-Finding 2:
-Error rate for /random-error reached ~100%.
-Root cause: intentional random 500/429/401/503.
-
-Finding 3:
-401 errors appear on /chat and /chat/slow when AI_API_KEY is unset.
-Root cause: IAM / API-key not configured (simulated secret-manager mismatch).
-
-Finding 4:
-AI cost simulation shows higher cost per /chat/slow request than /chat.
-Root cause: no rate limit and no caching; slow path uses an "expensive" model.
-
-Recommended actions:
-- Add request timeout after 5 seconds.
-- Add retry limit with exponential backoff.
-- Add caching for repeated prompts.
-- Add per-user rate limit.
-- Add fallback model for high-latency provider responses.
-- Add alert for P95 > 2 seconds on /chat/slow.
-- Add alert for Error Rate > 1% on any endpoint.
-```
-
----
-
-## Next Improvements
-
-Optional upgrades that make this lab even stronger for a CV:
-
-- Slack/Teams webhook in alertmanager for real alert notifications
-- Deploy to Fly.io (`fly deploy`) — `fly.toml` already configured
-- Feature flags + canary deployment simulation
-- Blue-green deployment via GitHub Action
-
----
-
-## Project Structure
-
-```text
-slow-ai-app-incident-lab/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app + lifespan + middleware + metrics/tracing wiring
-│   ├── config.py            # settings (env-driven, .env support)
-│   ├── database.py          # SQLite + Postgres backend abstraction
-│   ├── logging_setup.py     # JSON logging
-│   ├── middleware.py        # request logging + latency + request_id + metrics
-│   ├── metrics.py           # Prometheus metrics (custom AI counters/histograms)
-│   ├── tracing.py           # OpenTelemetry setup (OTLP -> Jaeger)
-│   ├── rate_limit.py        # Per-user token-bucket rate limiter (v1.3.2 fix)
-│   ├── cache.py             # In-memory TTL prompt cache (v1.3.2 fix)
-│   ├── ai_provider.py       # simulated provider (delay, 401, 503, cost, spans, metrics)
-│   └── routers/
-│       ├── __init__.py      # api_router aggregation
-│       ├── health.py        # GET /health
-│       ├── chat.py          # POST /chat, POST /chat/slow (rate-limited + cached)
-│       ├── diagnostics.py   # GET /random-error, GET /db-query
-│       └── stats.py         # GET /api/stats (live observability JSON)
-├── scripts/
-│   └── analyze.py           # local observability report (P50/P95/P99, errors, cost)
-├── sql/
-│   ├── schema.sql           # canonical Postgres schema
-│   └── observability_queries.sql  # 3 Postgres observability queries
-├── k6/
-│   ├── load-test.js         # mixed-traffic load test
-│   └── curl-format.txt      # curl timing breakdown for DNS/network checks
-├── prometheus/
-│   ├── prometheus.yml       # scrape config + alertmanager routing
-│   └── alerts.yml           # alerting rules (P95, error rate, cost spike)
-├── alertmanager/
-│   └── alertmanager.yml     # alert routing config
-├── loki/
-│   └── loki-config.yml      # Loki log aggregation config
-├── promtail/
-│   └── promtail-config.yml  # Promtail log shipper (Docker SD + JSON parsing)
-├── grafana/
-│   ├── provisioning/        # datasource (Prometheus + Loki) + dashboard provider
-│   └── dashboards/
-│       └── incident-dashboard.json  # 8-panel dashboard (latency, errors, cost, traces)
-├── docs/
-│   ├── RUNBOOK.md           # 10-step incident analysis runbook
-│   ├── INCIDENT_EXAMPLE.md  # worked example: timeline + findings
-│   └── POSTMORTEM_TEMPLATE.md  # blank postmortem template
-├── .github/workflows/
-│   └── ci.yml               # GitHub Actions: lint + smoke test
-├── data/                    # SQLite db + logs (gitignored)
-├── .env.example
-├── .gitignore
-├── Dockerfile               # app container image
-├── docker-compose.yml       # 7 services: app+pg+prom+am+grafana+jaeger+loki+promtail
-├── Makefile                 # make run / make load / make analyze / make run-docker
-├── fly.toml                 # Fly.io deployment config
-├── LICENSE                  # MIT
-├── requirements.txt
-├── run.py                   # `python run.py` launcher
-└── README.md
-```
-
----
-
-</details>
-
-## CV Bullet
-
-> Built a mini observability lab for diagnosing slow AI/web applications,
-> including P95/P99 latency analysis, error-rate investigation, structured
-> logging, tracing concepts, IAM/API-key checks, network/DNS debugging, cost
-> analysis, scaling review, rollback strategy, SQL-based observability
-> queries, Prometheus metrics, Grafana dashboards, OpenTelemetry tracing,
-> Loki log aggregation, alerting rules, per-user rate limiting, prompt
-> caching and Docker Compose orchestration.
-
-Deutsch:
-
-> Entwicklung eines Mini-Observability-Labs zur Analyse langsamer AI-/Web-Apps
-> mit P95/P99-Latenzanalyse, Error-Rate-Auswertung, strukturierten Logs,
-> Tracing-Konzepten, IAM/API-Key-Checks, Netzwerk-/DNS-Debugging,
-> Cloud-Kostenanalyse, Skalierungsprüfung, Rollback-Strategie und
-> SQL-Abfragen für Observability-Tools.
+[MIT](LICENSE)
