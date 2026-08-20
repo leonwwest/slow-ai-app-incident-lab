@@ -18,6 +18,7 @@ data/*.err
 data/*.pid
 data/server.*
 reports/
+evidence/research/
 
 # k6 / load test results
 results.json
