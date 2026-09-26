@@ -1,7 +1,7 @@
 fastapi==0.141.1
 starlette==1.6.0
-uvicorn[standard]==0.52.3
-pydantic>=2.13.4
+uvicorn[standard]==0.52.4
+pydantic>=2.13.5
 python-dotenv>=1.2.3
 
 # Observability stack
@@ -14,4 +14,4 @@ opentelemetry-exporter-otlp>=1.44.0
 opentelemetry-instrumentation-fastapi>=0.65b0
 
 # Postgres backend (optional). SQLite users do not need this.
-psycopg2-binary>=2.9.12
+psycopg2-binary>=2.9.13
