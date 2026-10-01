@@ -1,6 +1,6 @@
 fastapi==0.141.1
-starlette==1.6.0
-uvicorn[standard]==0.52.4
+starlette==1.7.0
+uvicorn[standard]==0.54.0
 pydantic>=2.13.5
 python-dotenv>=1.2.3
 
@@ -9,9 +9,9 @@ prometheus-client>=0.26.0
 
 # OpenTelemetry (tracing -> OTLP / Jaeger). Optional: app runs without these,
 # tracing is simply disabled. Installed in the Docker image.
-opentelemetry-distro>=0.65b0
-opentelemetry-exporter-otlp>=1.44.0
-opentelemetry-instrumentation-fastapi>=0.65b0
+opentelemetry-distro>=0.66b0
+opentelemetry-exporter-otlp>=1.45.0
+opentelemetry-instrumentation-fastapi>=0.66b0
 
 # Postgres backend (optional). SQLite users do not need this.
 psycopg2-binary>=2.9.13
